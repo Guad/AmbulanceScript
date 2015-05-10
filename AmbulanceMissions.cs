@@ -31,7 +31,7 @@ public class GTAAmbulance : Script
 
     private int secondTicks = 0;
     private int ticks = 0;
-    private int level = 12;
+    private int level;
     private int timer = 1000;
     private bool showMessage = false;
     private int[] difficultyScale = new int[] {100, 90, 85, 80, 75, 70, 60, 55, 50, 45, 40, 35, 30};
