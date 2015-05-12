@@ -23,7 +23,7 @@ public class GTAAmbulance : Script
     private UIText headsup = null;
     private UIRectangle headsupRectangle = null;
     private UIText bigmessage;
-    private Boolean onMission = false;
+    private Boolean OnAmbulanceMission = false;
     private Ped victimPed = null;
     private Ped oldVictim = null;
     private Blip blip;
@@ -31,7 +31,7 @@ public class GTAAmbulance : Script
 
     private int secondTicks = 0;
     private int ticks = 0;
-    private int level;
+    private int level = 1;
     private int timer = 1000;
     private bool showMessage = false;
     private int[] difficultyScale = new int[] {100, 90, 85, 80, 75, 70, 60, 55, 50, 45, 40, 35, 30};
@@ -149,7 +149,7 @@ public class GTAAmbulance : Script
             //this.coordLabel.Text = String.Format("Revision: {0}", Revision);    
 
             //this.coordLabel.Draw();
-            if (this.victimPed != null && this.onMission && player.IsInVehicle())
+            if (this.victimPed != null && this.OnAmbulanceMission && player.IsInVehicle())
             {
                 headsup.Text = "Level: " + this.level.ToString();
                 headsup.Text += "\nPatient Health: " + this.victimPed.Health.ToString() + "%";
@@ -208,7 +208,10 @@ public class GTAAmbulance : Script
                     
                     this.blip = GTAModExperimenting.Blip.Create(tmpCoords);
                     this.blip.Colour = 3;
-                    this.blip.Route = true;
+                    if (!this.blip.Route)
+                    {
+                        this.blip.Route = true;
+                    }
                     if (this.oldVictim != null)
                     {
                         this.oldVictim.MarkAsNoLongerNeeded();   
@@ -245,7 +248,7 @@ public class GTAAmbulance : Script
                 
                 secondTicks++;
             }
-            else if (this.victimPed != null && this.onMission && !player.IsInVehicle())
+            else if (this.victimPed != null && this.OnAmbulanceMission && !player.IsInVehicle())
             {
                 headsup.Text = "Level: " + this.level.ToString();
                 headsup.Text += "\nPatient Health: " + this.victimPed.Health.ToString() + "%";
@@ -292,7 +295,7 @@ public class GTAAmbulance : Script
     {
         if (e.KeyCode == Keys.D2)
         {
-            if (!this.onMission)
+            if (!this.OnAmbulanceMission)
             {
                 Ped player = Game.Player.Character;
                 if (player.CurrentVehicle.Model == GTA.Native.VehicleHash.Ambulance)
@@ -406,7 +409,8 @@ public class GTAAmbulance : Script
                 potentialList.Add(vict);
             }
         }
-        return potentialList[rnd.Next(0, potentialList.Count)];
+        int randChoice = rnd.Next(0, potentialList.Count);
+        return potentialList[randChoice];
     }
 
     void AddCash(int amount)
@@ -435,7 +439,7 @@ public class GTAAmbulance : Script
     {
         Ped player = Game.Player.Character;
        
-        this.onMission = true;
+        this.OnAmbulanceMission = true;
         this.missionState = 1;
 
             
@@ -445,9 +449,7 @@ public class GTAAmbulance : Script
         GTA.Native.Function.Call(GTA.Native.Hash._ADD_TEXT_COMPONENT_STRING, "Pick up the ~g~patient~w~.");
         GTA.Native.Function.Call(GTA.Native.Hash._0x9D77056A530643F6, 0.5f, 1);
         //GTA.UI.ShowSubtitle("Pick up the ~g~patient~w~.");
-
         GTA.Math.Vector3 pedSpawnPoint = GetRandomVictim();
-        
         this.victimPed = GTA.Native.Function.Call<Ped>(GTA.Native.Hash.CREATE_RANDOM_PED, pedSpawnPoint.X, pedSpawnPoint.Y, pedSpawnPoint.Z);
 
         this.victimPed.IsPersistent = true;
@@ -485,18 +487,22 @@ public class GTAAmbulance : Script
 
     private void StopAmbulanceMissions()
     {
-        this.onMission = false;
+        this.OnAmbulanceMission = false;
         this.missionState = 0;
         this.level = 1;
         //this.headsup = null;
-        GTA.Native.Function.Call(GTA.Native.Hash._0xB87A37EEB7FAA67D, "STRING");
-        GTA.Native.Function.Call(GTA.Native.Hash._ADD_TEXT_COMPONENT_STRING, "");
-        GTA.Native.Function.Call(GTA.Native.Hash._0x9D77056A530643F6, 0.5f, 1);
+        
         //GTA.UI.ShowSubtitle("");
         //GTA.Native.Function.Call(GTA.Native.Hash.SET_BLIP_ROUTE, this.blip, false);
         //GTA.Native.Function.Call(GTA.Native.Hash.REMOVE_BLIP, this.blip);
-        this.victimPed.MarkAsNoLongerNeeded();
-        this.oldVictim.MarkAsNoLongerNeeded();
+        if (this.victimPed != null && this.oldVictim != null)
+        {
+            this.victimPed.MarkAsNoLongerNeeded();
+            this.oldVictim.MarkAsNoLongerNeeded();
+            GTA.Native.Function.Call(GTA.Native.Hash._0xB87A37EEB7FAA67D, "STRING");
+            GTA.Native.Function.Call(GTA.Native.Hash._ADD_TEXT_COMPONENT_STRING, "");
+            GTA.Native.Function.Call(GTA.Native.Hash._0x9D77056A530643F6, 1, 1);
+        }
         if (this.blip.Exists && this.blip != null)
         {
             this.blip.Route = false;

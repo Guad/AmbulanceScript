@@ -14,6 +14,7 @@ namespace GTAModExperimenting
     {
 
         private readonly int id;
+        private bool _route = false;
 
         public Blip(int id)
         {
@@ -118,7 +119,15 @@ namespace GTAModExperimenting
         }
         public bool Route
         {
-            set { Function.Call(Hash.SET_BLIP_ROUTE, new InputArgument(id), new InputArgument(value)); }
+            set
+            {
+                this._route = value;
+                Function.Call(Hash.SET_BLIP_ROUTE, new InputArgument(id), new InputArgument(value)); 
+            }
+            get
+            {
+                return this._route;
+            }
         }
         public int Sprite
         {
