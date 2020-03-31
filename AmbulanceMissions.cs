@@ -15,12 +15,10 @@ public class GtaAmbulance : Script
         KeyDown += OnKeyDown;
         Tick += OnTick;
         Interval = 1;
-        ////this.coordLabel = new UIText("PlaceHolder", new Point(10, 40), 0.5f, Color.White, 4, false);
-        _bigmessage = new UIText("PARAMEDIC", new Point(630, 100), 2.8f, Color.Goldenrod, 2, true);
+        _bigmessage = new UIText("PARAMEDIC", new Point(630, 100), 2.8f, Color.Goldenrod, GTA.Font.Monospace, true);
     }
     private const int PayoutMultiplier = 100;
 
-    //private UIText coordLabel = null;
     private UIText _headsup;
     private UIRectangle _headsupRectangle;
     private UIText _bigmessage;
@@ -37,6 +35,12 @@ public class GtaAmbulance : Script
     private bool _showMessage;
     private int[] _difficultyScale = {100, 90, 85, 80, 75, 70, 60, 55, 50, 45, 40, 35, 30};
     private int _baseDamage = 900;
+
+
+    private bool _critical;
+    private bool _cprBeingApplied;
+    private bool _cprAppliedThisMission;
+    private bool _reanimationFailed;
 
     private int _missionState; // 0 - not started, 1 - going to patient, 2 - going to hospital, 3 - in hospital
     private bool _airMission;
@@ -135,166 +139,196 @@ public class GtaAmbulance : Script
 
     void OnTick(object sender, EventArgs e)
     {
-            if (_ticks >= _timer)
-            {
-                _ticks = 0;
-                _showMessage = false;
-            }
-            if (_showMessage)
-            {
-                _bigmessage.Draw();
-                _ticks += 1;
-            }
-            Ped player = Game.Player.Character;
-            
-            ////this.coordLabel.Caption = String.Format("Revision: {0}", Revision);    
+        if (_ticks >= _timer)
+        {
+            _ticks = 0;
+            _showMessage = false;
+        }
+        if (_showMessage)
+        {
+            _bigmessage.Draw();
+            _ticks += 1;
+        }
+        Ped player = Game.Player.Character;
 
-            //this.coordLabel.Draw();
-            if (_victimPed != null && _onAmbulanceMission && player.IsInVehicle())
+
+        if (_victimPed != null && _onAmbulanceMission)
+        {
+            if (_victimPed.Health <= 20 && !_critical && !_victimPed.IsInVehicle() && !_cprBeingApplied)
             {
-                _headsup.Caption = "Level: ~b~" + _level;
-                _headsup.Caption += "~w~\nPatient Health: ~b~" + _victimPed.Health + "%~w~";
-                _headsup.Draw();
-                _headsupRectangle.Draw();
-                if (_secondTicks >= 100)
+                _critical = true;
+                UI.Notify("The ~g~patient~w~ is in critical condition! You will have to CPR him.");
+                _victimPed.Task.PlayAnimation("mini@cpr@char_b@cpr_def", "cpr_pumpchest_idle", 8f, -1, true, 8f);
+            }
+
+            if (player.IsInRangeOf(_victimPed.Position, 2f) && _critical && !_cprBeingApplied)
+            {
+                _critical = false;
+                _cprBeingApplied = true;
+                EngageCPR(player, _victimPed);
+            }
+            if (_cprBeingApplied)
+            {
+                int prog = _victimPed.TaskSequenceProgress;
+                if (prog == 2)
                 {
-                    _secondTicks = 0;
-                    if (_victimPed.IsInVehicle(player.CurrentVehicle))
+                    if (_reanimationFailed)
                     {
-                        if (player.CurrentVehicle.Health < _baseDamage)
-                        {
-                            _victimPed.Health -= _rnd.Next(1, 6);
-                            _baseDamage = player.CurrentVehicle.Health;
-                        }
+                        _cprBeingApplied = false;
+                        _victimPed.Health = -1;
+                        _cprAppliedThisMission = true;
                     }
                     else
                     {
-                        if (_rnd.Next(0, 101) <= 70)
-                        {
-                            _victimPed.Health -= _rnd.Next(1, 3);
-                        }
+                        _cprBeingApplied = false;
+                        _victimPed.Health = 30;
+                        _cprAppliedThisMission = true;
                     }
                 }
-                if (_victimPed.Health <= 0)
-                {
-                    _timer = 200;
-                    _bigmessage.Caption = "Patient dead";
-                    _bigmessage.Color = Color.DarkRed;
-                    _showMessage = true;
-                    _victimPed.Kill();
-                    StopAmbulanceMissions();
-                }
-                if ((_victimPed.Position - player.Position).Length() < 15.0f && player.IsInVehicle() && !_victimPed.IsInVehicle() && !_victimPed.IsGettingIntoAVehicle && _missionState <= 2)
-                {
-                    _victimPed.Task.EnterVehicle(player.CurrentVehicle, VehicleSeat.RightRear);
-                    Function.Call(Hash._0xB87A37EEB7FAA67D, "STRING");
-                    Function.Call(Hash._ADD_TEXT_COMPONENT_STRING, "");
-                    Function.Call(Hash._0x9D77056A530643F6, 0.5f, 1);
-                    //GTA.UI.ShowSubtitle(""); //Next version
-                    _baseDamage = player.CurrentVehicle.Health;
-                }
-                if (player.IsInVehicle() && _victimPed.IsInVehicle(player.CurrentVehicle) && _missionState == 1)
-                {
-                    _missionState = 2;
-                    Function.Call(Hash._0xB87A37EEB7FAA67D, "STRING");
-                    Function.Call(Hash._ADD_TEXT_COMPONENT_STRING, "Go to the ~b~hospital~w~.");
-                    Function.Call(Hash._0x9D77056A530643F6, 0.5f, 1);
-                    //GTA.UI.ShowSubtitle("Go to the ~b~hospital~w~.");
-                    Vector3 tmpCoords = GetClosestHospital();
-                    if (_blip.Exists())
-                    {
-                        _blip.Remove();
-                    }
-                    
-                    _blip = World.CreateBlip(tmpCoords);
-                    _blip.Color = BlipColor.Blue;
-                    _blip.ShowRoute = true;
-                    
-                    if (_oldVictim != null)
-                    {
-                        _oldVictim.MarkAsNoLongerNeeded();   
-                    }
-                    //this.blip = GTA.Native.Function.Call<int>(GTA.Native.Hash.ADD_BLIP_FOR_COORD, tmpCoords.X, tmpCoords.Y, tmpCoords.Z);
-                    //GTA.Native.Function.Call(GTA.Native.Hash.SET_BLIP_COLOUR, this.blip, 3);
-                    //GTA.Native.Function.Call(GTA.Native.Hash.SET_BLIP_ROUTE, this.blip, true);
-                }
-
-                float threshold = ( _airMission ? 5.0f : 10.0f );
-                
-                if (_missionState == 2 && (GetClosestHospital() - player.Position).Length() < threshold && _victimPed.IsInVehicle(player.CurrentVehicle))
-                {
-                    _missionState = 3;
-                    _oldVictim = _victimPed;
-                    _oldVictim.Task.LeaveVehicle();
-                    _oldVictim.Task.GoTo(GetClosestEntrance());
-
-                    _blip.ShowRoute = false;
-                    _blip.Remove();
-                  
-                    _bigmessage.Caption = "Rewarded ~b~" + ((_level * PayoutMultiplier) + (_level * _victimPed.Health)) + "~w~ Dollars";
-                    _timer = 200;
-                    _bigmessage.Color = Color.WhiteSmoke;
-                    _bigmessage.Scale = 1.1f;
-                    _showMessage = true;
-                    AddCash((_level * PayoutMultiplier) + (_level * _victimPed.Health));
-                    _level++;
-                    //this.victimPed.MarkAsNoLongerNeeded();
-                    
-                    StartAmbulanceMissions();
-                }
-                
-                _secondTicks++;
             }
-            else if (_victimPed != null && _onAmbulanceMission && !player.IsInVehicle())
+        }
+                
+        if (_victimPed != null && _onAmbulanceMission && player.IsInVehicle())
+        {
+            _headsup.Caption = "Level: ~b~" + _level;
+            _headsup.Caption += "~w~\nPatient Health: ~b~" + _victimPed.Health + "%~w~";
+            _headsup.Draw();
+            _headsupRectangle.Draw();
+            if (_secondTicks >= 100)
             {
-                _headsup.Caption = "Level: ~b~" + _level;
-                _headsup.Caption += "\n~w~Patient Health: ~b~" + _victimPed.Health + "%~w~";
-                _headsup.Draw();
-                _headsupRectangle.Draw();
-                if (_secondTicks >= 50)
+                _secondTicks = 0;
+                if (_victimPed.IsInVehicle(player.CurrentVehicle))
                 {
-                    _secondTicks = 0;
-                    if (_victimPed.IsInVehicle())
+                    if (player.CurrentVehicle.Health < _baseDamage)
                     {
-                        if (_victimPed.CurrentVehicle.Health < _baseDamage)
-                        {
-                            _victimPed.Health -= _rnd.Next(1, 6);
-                            _baseDamage = _victimPed.CurrentVehicle.Health;
-                        }
-                    }
-                    else
-                    {
-                        if (_rnd.Next(0, 101) <= 50)
-                        {
-                            _victimPed.Health -= _rnd.Next(1, 3);
-                        }
+                        _victimPed.Health -= _rnd.Next(1, 6);
+                        _baseDamage = player.CurrentVehicle.Health;
                     }
                 }
-                if (_victimPed.Health <= 0)
+                else
                 {
-                    _timer = 200;
-                    _bigmessage.Caption = "Patient dead";
-                    _bigmessage.Color = Color.DarkRed;
-                    _showMessage = true;
-
-                    StopAmbulanceMissions();
+                    if (_rnd.Next(0, 101) <= 70 && !_cprBeingApplied && !_cprAppliedThisMission)
+                    {
+                        _victimPed.Health -= _rnd.Next(1, 3);
+                    }
                 }
-                _secondTicks++;
             }
-            if (player.Health <= 0)
+            if (_victimPed.Health <= 0)
             {
+                _timer = 200;
+                _bigmessage.Caption = "Patient dead";
+                _bigmessage.Color = Color.DarkRed;
+                _showMessage = true;
+                _victimPed.Kill();
                 StopAmbulanceMissions();
             }
+            if ((_victimPed.Position - player.Position).Length() < 15.0f && player.IsInVehicle() && !_victimPed.IsInVehicle() && !_victimPed.IsGettingIntoAVehicle && _missionState <= 2 && !_critical && !_cprBeingApplied)
+            {
+                _victimPed.Task.EnterVehicle(player.CurrentVehicle, VehicleSeat.RightRear);
+                UI.ShowSubtitle("");
+                _baseDamage = player.CurrentVehicle.Health;
+            }
+            if (player.IsInVehicle() && _victimPed.IsInVehicle(player.CurrentVehicle) && _missionState == 1)
+            {
+                _missionState = 2;
+                UI.ShowSubtitle("Go to the ~b~hospital~w~.", 9999999);
+                Vector3 tmpCoords = GetClosestHospital();
+                if (_blip.Exists())
+                {
+                    _blip.Remove();
+                }
+                    
+                _blip = World.CreateBlip(tmpCoords);
+                _blip.Color = BlipColor.Blue;
+                _blip.ShowRoute = true;
+                    
+                if (_oldVictim != null)
+                {
+                    _oldVictim.MarkAsNoLongerNeeded();   
+                }
+                //this.blip = GTA.Native.Function.Call<int>(GTA.Native.Hash.ADD_BLIP_FOR_COORD, tmpCoords.X, tmpCoords.Y, tmpCoords.Z);
+                //GTA.Native.Function.Call(GTA.Native.Hash.SET_BLIP_COLOUR, this.blip, 3);
+                //GTA.Native.Function.Call(GTA.Native.Hash.SET_BLIP_ROUTE, this.blip, true);
+            }
+
+            float threshold = ( _airMission ? 5.0f : 10.0f );
+                
+            if (_missionState == 2 && (GetClosestHospital() - player.Position).Length() < threshold && _victimPed.IsInVehicle(player.CurrentVehicle))
+            {
+                _missionState = 3;
+                _oldVictim = _victimPed;
+                _oldVictim.Task.LeaveVehicle();
+                _oldVictim.Task.GoTo(GetClosestEntrance());
+
+                _blip.ShowRoute = false;
+                _blip.Remove();
+                  
+                _bigmessage.Caption = "Rewarded ~b~" + ((_level * PayoutMultiplier) + (_level * _victimPed.Health)) + "~w~ Dollars";
+                _timer = 200;
+                _bigmessage.Color = Color.WhiteSmoke;
+                _bigmessage.Scale = 1.1f;
+                _showMessage = true;
+                AddCash((_level * PayoutMultiplier) + (_level * _victimPed.Health));
+                _level++;
+                //this.victimPed.MarkAsNoLongerNeeded();
+                    
+                StartAmbulanceMissions();
+            }
+                
+            _secondTicks++;
+        }
+        else if (_victimPed != null && _onAmbulanceMission && !player.IsInVehicle())
+        {
+            _headsup.Caption = "Level: ~b~" + _level;
+            _headsup.Caption += "\n~w~Patient Health: ~b~" + _victimPed.Health + "%~w~";
+            _headsup.Draw();
+            _headsupRectangle.Draw();
+            if (_secondTicks >= 50)
+            {
+                _secondTicks = 0;
+                if (_victimPed.IsInVehicle())
+                {
+                    if (_victimPed.CurrentVehicle.Health < _baseDamage)
+                    {
+                        _victimPed.Health -= _rnd.Next(1, 6);
+                        _baseDamage = _victimPed.CurrentVehicle.Health;
+                    }
+                }
+                else
+                {
+                    if (_rnd.Next(0, 101) <= 50 && !_cprBeingApplied && !_cprAppliedThisMission)
+                    {
+                        _victimPed.Health -= _rnd.Next(1, 3);
+                    }
+                }
+            }
+            if (_victimPed.Health <= 0)
+            {
+                _timer = 200;
+                _bigmessage.Caption = "Patient dead";
+                _bigmessage.Color = Color.DarkRed;
+                _showMessage = true;
+
+                StopAmbulanceMissions();
+            }
+            _secondTicks++;
+        }
+        if (player.Health <= 0)
+        {
+            StopAmbulanceMissions();
+        }
    
     }
 
+
     void OnKeyDown(object sender, KeyEventArgs e)
     {
+        Ped player = Game.Player.Character;
+        
         if (e.KeyCode == Keys.D2)
         {
             if (!_onAmbulanceMission)
             {
-                Ped player = Game.Player.Character;
                 if (player.IsInVehicle())
                 {
                     if (player.CurrentVehicle.Model == VehicleHash.Ambulance)
@@ -434,6 +468,47 @@ public class GtaAmbulance : Script
         return out2Pos;
     }
 
+    void EngageCPR(Ped target, Ped victim)
+    {
+        Vector3 offset = new Vector3(
+                                (float)Math.Cos((double)target.Heading * 0.0174532925f + 70f),
+                                (float)Math.Sin((double)target.Heading * 0.0174532925f + 70f),
+                                0);
+        target.Task.ClearAll();
+        victim.Task.ClearAllImmediately();
+        victim.Position = target.Position + target.ForwardVector * 1.2f + offset * 0.06f;
+        victim.Position -= new Vector3(0, 0, victim.HeightAboveGround + 0.2f);
+        victim.Heading = target.Heading + 70;
+
+        Random rndGen = new Random();
+        if (rndGen.Next(0, 11) >= 9)
+            _reanimationFailed = true;
+        else
+            _reanimationFailed = false;
+
+        //MEDIC
+        TaskSequence seq = new TaskSequence();
+        seq.AddTask.PlayAnimation("mini@cpr@char_a@cpr_def", "cpr_intro", 8f, 15000, true, 8f);
+        seq.AddTask.PlayAnimation("mini@cpr@char_a@cpr_str", "cpr_pumpchest", 8f, 20000, true, 8f);
+        if(_reanimationFailed)
+            seq.AddTask.PlayAnimation("mini@cpr@char_a@cpr_str", "cpr_fail", 8f, 20000, true, 8f);
+        else
+            seq.AddTask.PlayAnimation("mini@cpr@char_a@cpr_str", "cpr_success", 8f, 28000, true, 8f);
+        seq.Close();
+        target.Task.PerformSequence(seq);
+
+        //VICTIM
+        TaskSequence seq2 = new TaskSequence();
+        seq2.AddTask.PlayAnimation("mini@cpr@char_b@cpr_def", "cpr_intro", 8f, 15000, true, 8f);
+        seq2.AddTask.PlayAnimation("mini@cpr@char_b@cpr_str", "cpr_pumpchest", 8f, 20000, true, 8f);
+        if(_reanimationFailed)
+            seq2.AddTask.PlayAnimation("mini@cpr@char_b@cpr_str", "cpr_fail", 8f, 20000, true, 8f);
+        else
+            seq2.AddTask.PlayAnimation("mini@cpr@char_b@cpr_str", "cpr_success", 8f, 28000, true, 8f);
+        seq2.Close();
+        victim.Task.PerformSequence(seq2);
+    }
+
     /*
     private void LogToFile(string text)
     {
@@ -449,14 +524,17 @@ public class GtaAmbulance : Script
        
         _onAmbulanceMission = true;
         _missionState = 1;
-
+        _critical = false;
+        _cprAppliedThisMission = false;
+        _cprBeingApplied = false;
+        _reanimationFailed = false;
             
-        _headsup = new UIText("Level: ~b~" + _level, new Point(2, 520), 0.7f, Color.WhiteSmoke, 1, false);
-        _headsupRectangle = new UIRectangle(new Point(0, 520), new Size(215, 65), Color.FromArgb(100, 0, 0, 0));
-        Function.Call(Hash._0xB87A37EEB7FAA67D, "STRING");
+        _headsup = new UIText("Level: ~b~" + _level, new Point(2, 320), 0.7f, Color.WhiteSmoke, GTA.Font.HouseScript, false);
+        _headsupRectangle = new UIRectangle(new Point(0, 320), new Size(215, 65), Color.FromArgb(100, 0, 0, 0));
+        /*Function.Call(Hash._0xB87A37EEB7FAA67D, "STRING");
         Function.Call(Hash._ADD_TEXT_COMPONENT_STRING, "Pick up the ~g~patient~w~.");
-        Function.Call(Hash._0x9D77056A530643F6, 0.5f, 1);
-        //GTA.UI.ShowSubtitle("Pick up the ~g~patient~w~.");
+        Function.Call(Hash._0x9D77056A530643F6, 0.5f, 1);*/
+        UI.ShowSubtitle("Pick up the ~g~patient~w~.", 9999999);
 
         Vector3 pedSpawnPoint = GetRandomVictim();
 
@@ -469,9 +547,11 @@ public class GtaAmbulance : Script
         //this.victimPed.IsPersistent = true;
         //this.victimPed.AlwaysDiesOnLowHealth = false;
         _victimPed.Health = _level >= 14 ? 30 : _difficultyScale[_level-1];
-        //GTA.Native.Function.Call(GTA.Native.Hash.SET_PED_ALTERNATE_MOVEMENT_ANIM, new GTA.Native.InputArgument(this.victimPed.ID));
         player.IsEnemy = false;
         _victimPed.IsEnemy = false;
+
+        Function.Call(Hash.SET_PED_MOVEMENT_CLIPSET, _victimPed.Handle,
+            _victimPed.Gender == Gender.Male ? "move_m@injured" : "move_f@injured");
 
         if (_blip != null)
         {
@@ -480,15 +560,12 @@ public class GtaAmbulance : Script
                 _blip.Remove();
             }
         }
-        //GTA.Native.Function.Call(GTA.Native.Hash.REMOVE_BLIP, this.blip);
-        //this.blip = GTA.Native.Function.Call<int>(GTA.Native.Hash.ADD_BLIP_FOR_ENTITY, this.victimPed);
+        
         _blip = _victimPed.AddBlip();
         Function.Call(Hash.SET_BLIP_AS_FRIENDLY, _blip.Handle, true);
         _blip.Color = BlipColor.Green;
+        _blip.ShowRoute = true;
 
-        //GTA.Native.Function.Call(GTA.Native.Hash.SET_BLIP_AS_FRIENDLY, this.blip, true);
-        //GTA.Native.Function.Call(GTA.Native.Hash.SET_BLIP_COLOUR, this.blip, 2);
-        //BLIPS ARE NOT SUPPORTED YET
     }
 
     private void StopAmbulanceMissions()
@@ -500,22 +577,15 @@ public class GtaAmbulance : Script
             _level = 1;
             //this.headsup = null;
 
-            //GTA.UI.ShowSubtitle("");
-            //GTA.Native.Function.Call(GTA.Native.Hash.SET_BLIP_ROUTE, this.blip, false);
-            //GTA.Native.Function.Call(GTA.Native.Hash.REMOVE_BLIP, this.blip);
-            if (_victimPed != null && _oldVictim != null)
-            {
+            if(_victimPed !=null)
                 _victimPed.MarkAsNoLongerNeeded();
+            if(_oldVictim != null)
                 _oldVictim.MarkAsNoLongerNeeded();
-                Function.Call(Hash._0xB87A37EEB7FAA67D, "STRING");
-                Function.Call(Hash._ADD_TEXT_COMPONENT_STRING, "");
-                Function.Call(Hash._0x9D77056A530643F6, 1, 1);
-            }
+            UI.ShowSubtitle("");
             if (_blip.Exists() && _blip != null)
             {
                 _blip.ShowRoute = false;
                 _blip.Remove();
-                //GTAModExperimenting.Blip.Delete(this.blip.ID);
             }
         }
         //this.victimPed = null;
